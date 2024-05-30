@@ -1,0 +1,51 @@
+from flask import Flask, jsonify
+import requests
+from collections import deque
+import time
+
+app = Flask(__name__)
+WINDOW_SIZE = 10
+NUMBERS_API = "http://third-party-api/numbers"
+stored_numbers = deque(maxlen=WINDOW_SIZE)
+
+def fetch_number(number_type):
+    try:
+        response = requests.get(f"{NUMBERS_API}/{number_type}", timeout=0.5)
+        response.raise_for_status()
+        number = response.json().get("number")
+        return number
+    except (requests.RequestException, ValueError, KeyError):
+        return None
+
+def calculate_average(numbers):
+    return sum(numbers) / len(numbers) if numbers else 0
+
+@app.route('/numbers/<string:numberid>', methods=['GET'])
+def get_numbers(numberid):
+    if numberid not in ['p', 'f', 'e', 'r']:
+        return jsonify({"error": "Invalid number type"}), 400
+
+    start_time = time.time()
+
+    new_number = fetch_number(numberid)
+    if new_number is not None and new_number not in stored_numbers:
+        stored_numbers.append(new_number)
+
+    elapsed_time = time.time() - start_time
+    if elapsed_time > 0.5:
+        return jsonify({"error": "Request took too long"}), 500
+
+    numbers_before = list(stored_numbers)
+    average_before = calculate_average(numbers_before)
+
+    response_data = {
+        "numbers_before": numbers_before,
+        "average_before": average_before,
+        "numbers_after": list(stored_numbers),
+        "average_after": calculate_average(list(stored_numbers))
+    }
+
+    return jsonify(response_data), 200
+
+if __name__ == '__main__':
+    app.run(debug=True)
